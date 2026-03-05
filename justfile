@@ -1,16 +1,46 @@
 models_dir := env("HOME") / ".local/share/whispercrabs/models"
 default_model := "ggml-base.en.bin"
 
+# Install system dependencies
+deps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "$(uname)" == "Darwin" ]]; then
+        if ! brew list gtk4 &>/dev/null; then
+            echo "Installing gtk4 via Homebrew..."
+            brew install gtk4
+        else
+            echo "gtk4 already installed."
+        fi
+    elif command -v apt-get &>/dev/null; then
+        if ! pkg-config --exists gtk4 2>/dev/null; then
+            echo "Installing GTK4 dev packages..."
+            sudo apt-get install -y libgtk-4-dev
+        else
+            echo "GTK4 already installed."
+        fi
+    elif command -v dnf &>/dev/null; then
+        if ! pkg-config --exists gtk4 2>/dev/null; then
+            echo "Installing GTK4 dev packages..."
+            sudo dnf install -y gtk4-devel
+        else
+            echo "GTK4 already installed."
+        fi
+    else
+        echo "Unsupported platform. Please install GTK4 manually."
+        exit 1
+    fi
+
 # Build release binary
-build:
+build: deps
     cargo build --release
 
 # Run with current .env settings
-run:
+run: deps
     cargo run --release
 
 # Download whisper model and run in local mode
-run-local model=default_model:
+run-local model=default_model: deps
     @mkdir -p {{models_dir}}
     @if [ ! -f "{{models_dir}}/{{model}}" ]; then \
         echo "Downloading {{model}}..."; \
@@ -22,7 +52,7 @@ run-local model=default_model:
     PRIMARY_TRANSCRIPTION_SERVICE=local WHISPER_MODEL={{model}} cargo run --release
 
 # Run in API mode (default: Groq)
-run-api:
+run-api: deps
     PRIMARY_TRANSCRIPTION_SERVICE=api cargo run --release
 
 # Download a whisper model (without running)
