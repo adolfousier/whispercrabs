@@ -105,19 +105,46 @@ const CSS: &str = r#"
     }
 "#;
 
-/// Show the status label (handles macOS visibility toggling)
+/// Show a status message. On Linux, sets the inline label. On macOS, shows a modal dialog for errors.
 fn show_status(label: &gtk4::Label, text: &str) {
-    label.set_label(text);
-    label.set_opacity(1.0);
+    #[cfg(not(target_os = "macos"))]
+    {
+        label.set_label(text);
+        label.set_opacity(1.0);
+    }
+
     #[cfg(target_os = "macos")]
-    label.set_visible(true);
+    {
+        // On macOS, never show inline text — use a dialog for errors,
+        // silently ignore non-error status to keep the button clean.
+        let is_error = text.starts_with("No ")
+            || text.starts_with("Err:")
+            || text.contains("failed")
+            || text.contains("Failed");
+        if is_error
+            && let Some(window) = label.root().and_then(|r| r.downcast::<gtk4::Window>().ok())
+        {
+            let dialog = gtk4::MessageDialog::builder()
+                .transient_for(&window)
+                .modal(true)
+                .message_type(gtk4::MessageType::Error)
+                .buttons(gtk4::ButtonsType::Ok)
+                .text(text)
+                .build();
+            let content = dialog.message_area();
+            content.set_margin_top(12);
+            content.set_margin_bottom(12);
+            content.set_margin_start(16);
+            content.set_margin_end(16);
+            dialog.connect_response(|d, _| d.close());
+            dialog.show();
+        }
+    }
 }
 
 /// Hide the status label
 fn hide_status(label: &gtk4::Label) {
     label.set_opacity(0.0);
-    #[cfg(target_os = "macos")]
-    label.set_visible(false);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -204,16 +231,31 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         brand.add_css_class("brand-label");
         vbox.append(&brand);
         window.set_default_size(96, 110);
-        status.set_visible(false);
     }
 
+    // On macOS, status floats as overlay so it doesn't affect window layout.
+    // On Linux, it's appended normally (transparent window handles it fine).
+    #[cfg(not(target_os = "macos"))]
     vbox.append(&status);
 
     // WindowHandle wraps everything — makes the empty area around
     // the button draggable like a titlebar. Clicks on the Button
     // itself still go through to the button's click handler.
     let handle = gtk4::WindowHandle::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        let overlay = gtk4::Overlay::new();
+        overlay.set_child(Some(&vbox));
+        status.set_halign(gtk4::Align::Center);
+        status.set_valign(gtk4::Align::End);
+        status.set_margin_bottom(4);
+        overlay.add_overlay(&status);
+        handle.set_child(Some(&overlay));
+    }
+    #[cfg(not(target_os = "macos"))]
     handle.set_child(Some(&vbox));
+
     window.set_child(Some(&handle));
 
     // Open DB

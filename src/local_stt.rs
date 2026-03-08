@@ -7,6 +7,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 
 const WHISPER_SAMPLE_RATE: u32 = 16000;
 
+/// Local speech-to-text engine using whisper.cpp.
 pub struct LocalWhisper {
     ctx: WhisperContext,
 }

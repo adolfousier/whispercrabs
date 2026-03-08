@@ -1,3 +1,20 @@
+//! # WhisperCrabs
+//!
+//! Floating voice-to-text tool for Linux, macOS, and Windows.
+//!
+//! Click to record, click to transcribe, text copied to clipboard.
+//! Supports fully local transcription via whisper.cpp or any
+//! OpenAI-compatible API endpoint (Groq, Ollama, OpenRouter, LM Studio, etc.).
+//!
+//! ## Features
+//!
+//! - Floating always-on-top mic button (GTK4)
+//! - One-click provider switching via right-click menu
+//! - Local transcription via whisper.cpp (no internet required)
+//! - API transcription via any OpenAI-compatible endpoint
+//! - Global keyboard shortcuts via D-Bus
+//! - AI Agent-Ready: full D-Bus control
+
 mod api;
 mod audio;
 mod config;

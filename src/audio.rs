@@ -2,6 +2,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
+/// Captures audio from the default input device into an in-memory buffer.
 pub struct Recorder {
     samples: Arc<Mutex<Vec<f32>>>,
     stream: Option<cpal::Stream>,

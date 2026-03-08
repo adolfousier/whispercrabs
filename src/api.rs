@@ -1,5 +1,6 @@
 use reqwest::multipart;
 
+/// Send WAV audio to an OpenAI-compatible transcription endpoint and return the text.
 pub async fn transcribe(
     base_url: &str,
     api_key: &str,

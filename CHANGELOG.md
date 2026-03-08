@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.20 — 2026-03-08
+
+- **macOS error dialog** — errors ("No microphone found", "No API key set", etc.) now show as a native modal dialog on macOS instead of truncated inline text
+- **Clean macOS button** — no inline status text ever renders on macOS; the button stays pristine
+- Status overlay approach on macOS prevents window layout from breaking
+- **Crate-level documentation** — added `//!` module docs for `cargo doc` / docs.rs landing page
+- **Docstrings** — added `///` doc comments to all public structs, enums, functions, and constants
+- Added `rust-version = "1.85"` (MSRV) to `Cargo.toml`
+
 ## v0.1.19 — 2026-03-07
 
 - **macOS status notifications** — "No microphone found", "No API key set", and all error/status messages now properly show on macOS (previously hidden due to layout fix)

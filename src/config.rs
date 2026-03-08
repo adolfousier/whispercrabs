@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+/// Active transcription backend.
 #[derive(Clone, Copy, PartialEq)]
 pub enum TranscriptionService {
     Api,
     Local,
 }
 
+/// Built-in API provider configuration.
 pub struct ApiPreset {
     pub id: &'static str,
     pub label: &'static str,
@@ -14,6 +16,7 @@ pub struct ApiPreset {
     pub needs_key: bool,
 }
 
+/// Pre-configured API providers (Groq, Ollama, OpenRouter, LM Studio).
 pub const API_PRESETS: &[ApiPreset] = &[
     ApiPreset {
         id: "groq",
@@ -45,10 +48,12 @@ pub const API_PRESETS: &[ApiPreset] = &[
     },
 ];
 
+/// Look up an API preset by its short identifier.
 pub fn find_preset(id: &str) -> Option<&'static ApiPreset> {
     API_PRESETS.iter().find(|p| p.id == id)
 }
 
+/// Built-in local whisper model preset.
 pub struct LocalModelPreset {
     pub id: &'static str,
     pub label: &'static str,
@@ -56,6 +61,7 @@ pub struct LocalModelPreset {
     pub size_label: &'static str,
 }
 
+/// Available local whisper model sizes (Tiny through Medium).
 pub const LOCAL_MODEL_PRESETS: &[LocalModelPreset] = &[
     LocalModelPreset {
         id: "local-tiny",
@@ -83,12 +89,15 @@ pub const LOCAL_MODEL_PRESETS: &[LocalModelPreset] = &[
     },
 ];
 
+/// Default local model preset ID.
 pub const DEFAULT_LOCAL_MODEL: &str = "local-tiny";
 
+/// Look up a local model preset by its short identifier.
 pub fn find_local_model(id: &str) -> Option<&'static LocalModelPreset> {
     LOCAL_MODEL_PRESETS.iter().find(|m| m.id == id)
 }
 
+/// Build the HuggingFace download URL for a whisper model file.
 pub fn model_url(file_name: &str) -> String {
     format!(
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
@@ -96,6 +105,7 @@ pub fn model_url(file_name: &str) -> String {
     )
 }
 
+/// Application configuration loaded from environment and `.env` file.
 pub struct Config {
     pub transcription_service: TranscriptionService,
     pub api_base_url: String,

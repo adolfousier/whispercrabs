@@ -1,10 +1,12 @@
 use rusqlite::{Connection, Result, params};
 use std::path::Path;
 
+/// SQLite database for transcription history and settings.
 pub struct Db {
     conn: Connection,
 }
 
+/// A single transcription record.
 pub struct Transcription {
     pub _id: i64,
     pub text: String,

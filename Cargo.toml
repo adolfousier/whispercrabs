@@ -1,11 +1,17 @@
 [package]
 name = "whispercrabs"
-version = "0.1.19"
+version = "0.1.20"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Adolfo Usier"]
 license = "MIT"
 description = "Floating voice-to-text tool with local and API-based transcription"
 repository = "https://github.com/adolfousier/whispercrabs"
+homepage = "https://github.com/adolfousier/whispercrabs"
+readme = "README.md"
+keywords = ["whisper", "speech-to-text", "transcription", "gtk4", "voice"]
+categories = ["multimedia::audio", "gui"]
+exclude = ["src/screenshots/*", ".github/*", ".DS_Store"]
 
 [dependencies]
 gtk4 = "0.9"
