@@ -191,7 +191,11 @@ This is especially useful with local models that may take a few seconds to trans
 
 ### Text-to-Speech (Optional)
 
-WhisperCrabs includes optional text-to-speech powered by [Piper](https://github.com/rhasspy/piper). Select any text on your machine, copy it to the clipboard, then right-click the button and choose **Read Clipboard** to hear it spoken aloud.
+WhisperCrabs includes optional text-to-speech powered by [Piper](https://github.com/rhasspy/piper). To use it:
+
+1. Select any text on your machine and copy it (Ctrl+C / Cmd+C)
+2. Right-click the WhisperCrabs button
+3. Click **Read Clipboard** to hear it spoken aloud
 
 - TTS is **completely optional** — no setup required unless you want it
 - First use automatically installs a Python venv with `piper-tts` and downloads the selected voice model (~63 MB)
