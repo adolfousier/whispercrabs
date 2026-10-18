@@ -127,6 +127,23 @@ fn all_tts_api_presets_have_required_fields() {
 }
 
 #[test]
+fn tts_preset_ids_are_unique_and_url_safe() {
+    for (i, preset) in config::TTS_API_PRESETS.iter().enumerate() {
+        assert!(
+            preset
+                .id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+            "preset id {} must be lowercase ascii, since it is used as a menu and env value",
+            preset.id
+        );
+        for other in &config::TTS_API_PRESETS[i + 1..] {
+            assert_ne!(preset.id, other.id, "duplicate preset id {}", preset.id);
+        }
+    }
+}
+
+#[test]
 fn tts_presets_do_not_collide_with_piper_voice_ids() {
     for preset in config::TTS_API_PRESETS {
         assert!(

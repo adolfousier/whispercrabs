@@ -113,11 +113,11 @@ pub enum TtsProvider {
     None,
     /// Local synthesis through Piper.
     Piper,
-    /// Remote synthesis through an [OI]-compatible `/audio/speech` endpoint.
+    /// Remote synthesis through an OpenAI-compatible `/audio/speech` endpoint.
     Api,
 }
 
-/// Built-in [OI]-compatible TTS provider configuration.
+/// Built-in OpenAI-compatible TTS provider configuration.
 pub struct TtsApiPreset {
     pub id: &'static str,
     pub label: &'static str,
@@ -127,11 +127,11 @@ pub struct TtsApiPreset {
     pub needs_key: bool,
 }
 
-/// Pre-configured TTS API providers ([OI], OpenRouter, custom endpoint).
+/// Pre-configured TTS API providers (OpenAI, OpenRouter, custom endpoint).
 pub const TTS_API_PRESETS: &[TtsApiPreset] = &[
     TtsApiPreset {
         id: "openai",
-        label: "[OI]",
+        label: "OpenAI",
         base_url: "https://api.openai.com/v1",
         default_model: "gpt-4o-mini-tts",
         default_voice: "alloy",

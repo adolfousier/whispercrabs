@@ -1614,7 +1614,7 @@ fn tts_state_id(runtime: &Rc<RefCell<RuntimeState>>) -> String {
     }
 }
 
-/// Dialog for any [OI]-compatible TTS endpoint (LocalAI, LM Studio, custom).
+/// Dialog for any OpenAI-compatible TTS endpoint (LocalAI, LM Studio, custom).
 fn show_tts_custom_dialog(
     parent: &gtk4::ApplicationWindow,
     runtime: &Rc<RefCell<RuntimeState>>,

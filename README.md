@@ -29,7 +29,7 @@ With **local mode** (`PRIMARY_TRANSCRIPTION_SERVICE=local`), everything stays on
 - **STT — Local**: whisper.cpp transcription, no internet required (Tiny, Base, Small, Medium models)
 - **STT — API**: any OpenAI-compatible endpoint (Groq, Ollama, OpenRouter, LM Studio, Custom)
 - **TTS — Local**: optional text-to-speech via Piper, 6 built-in voices (US/UK, male/female)
-- **TTS — API**: any [OI]-compatible `/audio/speech` endpoint ([OI], OpenRouter, or a custom server)
+- **TTS — API**: any OpenAI-compatible `/audio/speech` endpoint (OpenAI, OpenRouter, or a custom server)
 - One-click switching via right-click menu for both STT and TTS
 - **Custom TTS API dialog** — Base URL, API Key, Model, and Voice for any compatible server
 - **Custom API dialog** — connect to any OpenAI-compatible endpoint with Base URL, API Key, and Model
@@ -234,13 +234,13 @@ Switch voices from the right-click menu under **TTS — Local (Piper)**. Use **R
 
 #### Text-to-Speech via API
 
-Local Piper stays the default, but you can point TTS at any [OI]-compatible `/audio/speech` endpoint instead. This is the same choice you already have for STT: local by default, hosted or self-hosted when you want it.
+Local Piper stays the default, but you can point TTS at any OpenAI-compatible `/audio/speech` endpoint instead. This is the same choice you already have for STT: local by default, hosted or self-hosted when you want it.
 
 Right-click the button and pick a provider under **TTS — API**:
 
 | Provider | Base URL | Default Model | Default Voice | API Key |
 |----------|----------|---------------|---------------|---------|
-| [OI] | `https://api.openai.com/v1` | `gpt-4o-mini-tts` | `alloy` | Required |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini-tts` | `alloy` | Required |
 | OpenRouter | `https://openrouter.ai/api/v1` | `mistralai/voxtral-mini-tts-2603` | `en_paul_neutral` | Required |
 | Custom API... | User-configured | User-configured | User-configured | Optional |
 
@@ -406,7 +406,7 @@ API_MODEL=whisper-1
 | Audio playback | rodio |
 | Local STT | whisper-rs (whisper.cpp) + rubato |
 | API STT | reqwest + OpenAI-compatible API |
-| TTS | piper-tts (Python, optional) or [OI]-compatible `/audio/speech` |
+| TTS | piper-tts (Python, optional) or OpenAI-compatible `/audio/speech` |
 | Database | rusqlite (bundled SQLite) |
 | Clipboard | arboard |
 | Config | dotenvy |

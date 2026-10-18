@@ -1,13 +1,13 @@
 /// Text-to-speech engines.
 ///
 /// Local synthesis runs through Piper (Python `piper-tts` package). Remote
-/// synthesis talks to any [OI]-compatible `/audio/speech` endpoint
-/// ([OI], OpenRouter, LocalAI, and similar servers).
+/// synthesis talks to any OpenAI-compatible `/audio/speech` endpoint
+/// (OpenAI, OpenRouter, LocalAI, and similar servers).
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Longest text sent in a single API request. [OI] caps TTS input at 4096
+/// Longest text sent in a single API request. OpenAI caps TTS input at 4096
 /// characters, so stay just below it and concatenate the audio chunks.
 const MAX_TTS_CHARS: usize = 3900;
 
@@ -36,7 +36,7 @@ impl TtsEngine {
     }
 }
 
-/// [OI]-compatible text-to-speech engine.
+/// OpenAI-compatible text-to-speech engine.
 ///
 /// Sends `POST {base_url}/audio/speech` with `response_format: "pcm"` and
 /// turns the response into samples. WAV responses are accepted too; MP3
@@ -166,7 +166,7 @@ impl ApiTts {
     }
 }
 
-/// Empty voice values fall back to the [OI] default.
+/// Empty voice values fall back to the OpenAI default.
 pub(crate) fn normalize_voice(voice: &str) -> String {
     let voice = voice.trim();
     if voice.is_empty() {
