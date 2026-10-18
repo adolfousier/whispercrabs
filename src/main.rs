@@ -7,13 +7,15 @@
 //!
 //! **Local-first** — runs entirely on your machine with whisper.cpp (STT)
 //! and Piper (TTS). No cloud required. Also supports any OpenAI-compatible
-//! API endpoint for STT (Groq, Ollama, OpenRouter, LM Studio, etc.).
+//! API endpoint for STT (Groq, Ollama, OpenRouter, LM Studio, etc.) and for
+//! TTS (OpenAI, OpenRouter, or any custom `/audio/speech` server).
 //!
 //! ## Features
 //!
 //! - Floating always-on-top mic button (GTK4)
 //! - STT — Local (whisper.cpp) or API (OpenAI-compatible)
-//! - TTS — Local via Piper, 6 built-in voices, optional
+//! - TTS — Local via Piper (6 built-in voices) or API via any
+//!   OpenAI-compatible `/audio/speech` endpoint
 //! - One-click STT/TTS switching via right-click menu
 //! - Global keyboard shortcuts via D-Bus
 //! - AI Agent-Ready: full D-Bus control

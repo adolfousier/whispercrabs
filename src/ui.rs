@@ -9,7 +9,7 @@ use crate::audio::Recorder;
 use crate::config::{self, Config, TranscriptionService, TtsProvider};
 use crate::db::Db;
 use crate::local_stt::LocalWhisper;
-use crate::tts::PiperTts;
+use crate::tts::{ApiTts, PiperTts, Speech, TtsEngine};
 
 const MIC_SVG: &[u8] = include_bytes!("icons/microphone.svg");
 const NOTIFICATION_SOUND: &[u8] = include_bytes!("audio/notification.wav");
@@ -176,7 +176,12 @@ struct RuntimeState {
     downloading: bool,
     tts_provider: TtsProvider,
     tts_voice: String,
-    tts_engine: Option<Arc<PiperTts>>,
+    /// Active preset id for API TTS ("openai", "openrouter", "custom").
+    tts_preset: String,
+    tts_api_url: String,
+    tts_api_key: Option<String>,
+    tts_api_model: String,
+    tts_engine: Option<Arc<TtsEngine>>,
     tts_downloading: bool,
     tts_stop: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -402,33 +407,29 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
             None
         };
 
-    // Load TTS state from DB
+    // Load TTS state from DB, falling back to the env defaults
     let piper_dir = config.models_dir.join("piper");
-    let initial_tts_voice = db
-        .lock()
-        .ok()
-        .and_then(|d| d.get_setting("tts_voice").ok().flatten())
-        .unwrap_or_else(|| config::DEFAULT_PIPER_VOICE.to_string());
-    let (initial_tts_provider, initial_tts_engine) = {
-        let tts_setting = db
-            .lock()
-            .ok()
-            .and_then(|d| d.get_setting("tts_provider").ok().flatten());
-        if tts_setting.as_deref() == Some("piper")
-            && config::piper_venv_exists(&piper_dir)
-            && config::piper_voice_exists(&piper_dir, &initial_tts_voice)
-        {
-            match PiperTts::new(&piper_dir, &initial_tts_voice) {
-                Ok(engine) => (TtsProvider::Piper, Some(Arc::new(engine))),
-                Err(e) => {
-                    eprintln!("Failed to load Piper TTS: {e}");
-                    (TtsProvider::None, None)
-                }
-            }
-        } else {
-            (TtsProvider::None, None)
-        }
-    };
+    let tts_settings = db.lock().ok().map(|d| TtsSettings {
+        provider: d.get_setting("tts_provider").ok().flatten(),
+        voice: d.get_setting("tts_voice").ok().flatten(),
+        preset: d.get_setting("tts_api_preset").ok().flatten(),
+        url: d.get_setting("tts_api_url").ok().flatten(),
+        key: d.get_setting("tts_api_key").ok().flatten(),
+        model: d.get_setting("tts_api_model").ok().flatten(),
+    });
+    let tts_state = resolve_tts_state(
+        tts_settings,
+        &config,
+        &piper_dir,
+        config::DEFAULT_PIPER_VOICE,
+    );
+    let initial_tts_voice = tts_state.voice.clone();
+    let initial_tts_provider = tts_state.provider;
+    let initial_tts_preset = tts_state.preset.clone();
+    let initial_tts_url = tts_state.url.clone();
+    let initial_tts_key = tts_state.key.clone();
+    let initial_tts_model = tts_state.model.clone();
+    let initial_tts_engine = tts_state.engine;
 
     // Runtime state (UI-thread only)
     let runtime = Rc::new(RefCell::new(RuntimeState {
@@ -441,6 +442,10 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         downloading: false,
         tts_provider: initial_tts_provider,
         tts_voice: initial_tts_voice,
+        tts_preset: initial_tts_preset.clone(),
+        tts_api_url: initial_tts_url,
+        tts_api_key: initial_tts_key,
+        tts_api_model: initial_tts_model,
         tts_engine: initial_tts_engine,
         tts_downloading: false,
         tts_stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -662,11 +667,11 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         );
     }
 
-    // TTS section — voice selection
-    let tts_initial = if initial_tts_provider == TtsProvider::Piper {
-        runtime.borrow().tts_voice.clone()
-    } else {
-        "none".to_string()
+    // TTS sections — local Piper voices and API providers
+    let tts_initial = match initial_tts_provider {
+        TtsProvider::Piper => runtime.borrow().tts_voice.clone(),
+        TtsProvider::Api => format!("api:{}", initial_tts_preset),
+        TtsProvider::None => "none".to_string(),
     };
     let tts_mode_action = gtk4::gio::SimpleAction::new_stateful(
         "tts-mode",
@@ -676,16 +681,24 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let read_clipboard_action = gtk4::gio::SimpleAction::new("read-clipboard", None);
     read_clipboard_action.set_enabled(initial_tts_provider != TtsProvider::None);
 
-    let tts_section = gtk4::gio::Menu::new();
-    tts_section.append(Some("Off"), Some("app.tts-mode::none"));
+    let tts_local_section = gtk4::gio::Menu::new();
     for voice in config::PIPER_VOICES {
-        tts_section.append(
+        tts_local_section.append(
             Some(voice.label),
             Some(&format!("app.tts-mode::{}", voice.id)),
         );
     }
 
+    let tts_api_section = gtk4::gio::Menu::new();
+    for preset in config::TTS_API_PRESETS {
+        tts_api_section.append(
+            Some(preset.label),
+            Some(&format!("app.tts-mode::api:{}", preset.id)),
+        );
+    }
+
     let tts_manage = gtk4::gio::Menu::new();
+    tts_manage.append(Some("Off"), Some("app.tts-mode::none"));
     tts_manage.append(Some("Reset TTS"), Some("app.tts-reset"));
     tts_manage.append(Some("Delete TTS"), Some("app.tts-delete"));
 
@@ -697,7 +710,8 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let menu = gtk4::gio::Menu::new();
     menu.append_section(Some("STT — API"), &stt_api_section);
     menu.append_section(Some("STT — Local"), &stt_local_section);
-    menu.append_section(Some("TTS — Voices"), &tts_section);
+    menu.append_section(Some("TTS — Local (Piper)"), &tts_local_section);
+    menu.append_section(Some("TTS — API"), &tts_api_section);
     menu.append_section(None, &tts_manage);
     menu.append_section(None, &actions_section);
 
@@ -983,7 +997,26 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
             return;
         }
 
-        // Any other value is a voice ID
+        // API provider selection, e.g. "api:openai" or "api:custom"
+        if let Some(preset_id) = chosen.strip_prefix("api:") {
+            let Some(preset) = config::find_tts_preset(preset_id) else {
+                dbg_log!("[TTS] unknown API preset: {preset_id}");
+                return;
+            };
+            let ui = TtsUi {
+                action: action.clone(),
+                read_action: read_cb_action_ref.clone(),
+                status: status_tts.clone(),
+            };
+            if preset_id == "custom" {
+                show_tts_custom_dialog(&window_tts, &runtime_tts, &db_tts, ui);
+                return;
+            }
+            switch_to_tts_preset(&window_tts, &runtime_tts, &config_tts, &db_tts, ui, preset);
+            return;
+        }
+
+        // Any other value is a Piper voice ID
         let Some(voice) = config::find_piper_voice(&chosen) else {
             dbg_log!("[TTS] unknown voice: {chosen}");
             return;
@@ -1007,7 +1040,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
                     let mut rt = runtime_tts.borrow_mut();
                     rt.tts_provider = TtsProvider::Piper;
                     rt.tts_voice = voice.id.to_string();
-                    rt.tts_engine = Some(Arc::new(engine));
+                    rt.tts_engine = Some(Arc::new(TtsEngine::Piper(engine)));
                 }
                 Err(e) => {
                     eprintln!("Failed to load Piper: {e}");
@@ -1089,9 +1122,15 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
             let mut rt = runtime_del.borrow_mut();
             rt.tts_provider = TtsProvider::None;
             rt.tts_engine = None;
+            rt.tts_api_key = None;
         }
         if let Ok(d) = db_del.lock() {
             let _ = d.set_setting("tts_provider", "none");
+            // Drop the stored API credentials too: "Delete TTS" means all
+            // TTS data, not just the local voice files.
+            let _ = d.set_setting("tts_api_key", "");
+            let _ = d.set_setting("tts_api_key_openai", "");
+            let _ = d.set_setting("tts_api_key_openrouter", "");
         }
         read_cb_del.set_enabled(false);
         tts_action_del.set_state(&"none".to_variant());
@@ -1144,8 +1183,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         stop_flag.store(false, std::sync::atomic::Ordering::Relaxed);
         drop(rt);
 
-        let sr = engine.sample_rate();
-        let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<i16>, String>>();
+        let (tx, rx) = std::sync::mpsc::channel::<Result<Speech, String>>();
 
         std::thread::spawn(move || {
             let result = engine.synthesize(&text);
@@ -1158,11 +1196,11 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
 
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             match rx.try_recv() {
-                Ok(Ok(samples)) => {
+                Ok(Ok(speech)) => {
                     dbg_log!(
                         "[TTS] got {} samples, playing at {}Hz...",
-                        samples.len(),
-                        sr
+                        speech.samples.len(),
+                        speech.sample_rate
                     );
                     btn2.remove_css_class("synthesizing");
 
@@ -1174,7 +1212,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
                     let state3 = Rc::clone(&state2);
                     let stop3 = Arc::clone(&stop2);
 
-                    play_tts_audio(samples, sr, stop3, move || {
+                    play_tts_audio(speech.samples, speech.sample_rate, stop3, move || {
                         btn3.remove_css_class("speaking");
                         *state3.borrow_mut() = State::Idle;
                     });
@@ -1221,11 +1259,10 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         stop_flag.store(false, std::sync::atomic::Ordering::Relaxed);
         drop(rt);
 
-        let sr = engine.sample_rate();
         *state_speak.borrow_mut() = State::Synthesizing;
         btn_speak.add_css_class("synthesizing");
 
-        let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<i16>, String>>();
+        let (tx, rx) = std::sync::mpsc::channel::<Result<Speech, String>>();
         std::thread::spawn(move || {
             let _ = tx.send(engine.synthesize(&text));
         });
@@ -1235,16 +1272,21 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         let stop2 = stop_flag;
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             match rx.try_recv() {
-                Ok(Ok(samples)) => {
+                Ok(Ok(speech)) => {
                     btn2.remove_css_class("synthesizing");
                     *state2.borrow_mut() = State::Speaking;
                     btn2.add_css_class("speaking");
                     let btn3 = btn2.clone();
                     let state3 = Rc::clone(&state2);
-                    play_tts_audio(samples, sr, Arc::clone(&stop2), move || {
-                        btn3.remove_css_class("speaking");
-                        *state3.borrow_mut() = State::Idle;
-                    });
+                    play_tts_audio(
+                        speech.samples,
+                        speech.sample_rate,
+                        Arc::clone(&stop2),
+                        move || {
+                            btn3.remove_css_class("speaking");
+                            *state3.borrow_mut() = State::Idle;
+                        },
+                    );
                     glib::ControlFlow::Break
                 }
                 Ok(Err(_)) => {
@@ -1264,6 +1306,442 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     app.add_action(&speak_action);
 
     window.present();
+}
+
+/// Widgets the TTS provider switch needs to update.
+#[derive(Clone)]
+struct TtsUi {
+    action: gtk4::gio::SimpleAction,
+    read_action: gtk4::gio::SimpleAction,
+    status: gtk4::Label,
+}
+
+/// Persisted TTS settings read from the database.
+struct TtsSettings {
+    provider: Option<String>,
+    voice: Option<String>,
+    preset: Option<String>,
+    url: Option<String>,
+    key: Option<String>,
+    model: Option<String>,
+}
+
+/// Resolved TTS state for startup, including a loaded engine when possible.
+struct ResolvedTts {
+    provider: TtsProvider,
+    voice: String,
+    preset: String,
+    url: String,
+    key: Option<String>,
+    model: String,
+    engine: Option<Arc<TtsEngine>>,
+}
+
+/// Resolve the TTS provider for startup from the database, falling back to
+/// the environment defaults. Piper stays the default when a local install is
+/// present; API TTS is used when it was selected or configured.
+fn resolve_tts_state(
+    settings: Option<TtsSettings>,
+    config: &Config,
+    piper_dir: &std::path::Path,
+    default_piper_voice: &str,
+) -> ResolvedTts {
+    let settings = settings.unwrap_or(TtsSettings {
+        provider: None,
+        voice: None,
+        preset: None,
+        url: None,
+        key: None,
+        model: None,
+    });
+
+    let voice = settings.voice.unwrap_or_else(|| {
+        if config.tts_voice.trim().is_empty() {
+            default_piper_voice.to_string()
+        } else {
+            config.tts_voice.clone()
+        }
+    });
+    let provider_setting = settings
+        .provider
+        .unwrap_or_else(|| config.tts_provider.clone());
+
+    let mut resolved = ResolvedTts {
+        provider: TtsProvider::None,
+        voice,
+        preset: settings
+            .preset
+            .unwrap_or_else(|| config.tts_api_preset.clone()),
+        url: settings
+            .url
+            .unwrap_or_else(|| config.tts_api_base_url.clone()),
+        key: settings.key.or_else(|| config.tts_api_key.clone()),
+        model: settings
+            .model
+            .unwrap_or_else(|| config.tts_api_model.clone()),
+        engine: None,
+    };
+
+    match provider_setting.as_str() {
+        "api" => {
+            match ApiTts::new(
+                &resolved.url,
+                resolved.key.clone(),
+                &resolved.model,
+                &resolved.voice,
+            ) {
+                Ok(engine) => {
+                    resolved.provider = TtsProvider::Api;
+                    resolved.engine = Some(Arc::new(TtsEngine::Api(engine)));
+                }
+                Err(e) => eprintln!("Failed to load API TTS: {e}"),
+            }
+        }
+        "piper" | "local"
+            if config::piper_venv_exists(piper_dir)
+                && config::piper_voice_exists(piper_dir, &resolved.voice) =>
+        {
+            match PiperTts::new(piper_dir, &resolved.voice) {
+                Ok(engine) => {
+                    resolved.provider = TtsProvider::Piper;
+                    resolved.engine = Some(Arc::new(TtsEngine::Piper(engine)));
+                }
+                Err(e) => eprintln!("Failed to load Piper TTS: {e}"),
+            }
+        }
+        _ => {}
+    }
+
+    resolved
+}
+
+/// Activate a built-in API TTS preset, prompting for an API key when needed.
+fn switch_to_tts_preset(
+    parent: &gtk4::ApplicationWindow,
+    runtime: &Rc<RefCell<RuntimeState>>,
+    config: &Arc<Config>,
+    db: &Arc<Mutex<Db>>,
+    ui: TtsUi,
+    preset: &config::TtsApiPreset,
+) {
+    let resolved_key = db
+        .lock()
+        .ok()
+        .and_then(|d| {
+            d.get_setting(&format!("tts_api_key_{}", preset.id))
+                .ok()
+                .flatten()
+        })
+        .or_else(|| {
+            db.lock()
+                .ok()
+                .and_then(|d| d.get_setting("tts_api_key").ok().flatten())
+        })
+        .or_else(|| config.tts_api_key.clone())
+        .filter(|k| !k.trim().is_empty());
+
+    if preset.needs_key && resolved_key.is_none() {
+        show_tts_api_key_dialog(parent, runtime, db, ui, preset);
+        return;
+    }
+
+    apply_tts_preset(
+        runtime,
+        db,
+        &ui,
+        preset,
+        preset.base_url.to_string(),
+        preset.default_model.to_string(),
+        preset.default_voice.to_string(),
+        resolved_key,
+    );
+}
+
+/// Build the API engine and make it the active TTS provider.
+#[allow(clippy::too_many_arguments)]
+fn apply_tts_preset(
+    runtime: &Rc<RefCell<RuntimeState>>,
+    db: &Arc<Mutex<Db>>,
+    ui: &TtsUi,
+    preset: &config::TtsApiPreset,
+    base_url: String,
+    model: String,
+    voice: String,
+    api_key: Option<String>,
+) {
+    let engine = match ApiTts::new(&base_url, api_key.clone(), &model, &voice) {
+        Ok(engine) => engine,
+        Err(e) => {
+            eprintln!("TTS preset {} failed: {e}", preset.id);
+            show_status(&ui.status, "TTS load failed");
+            ui.action.set_state(&"none".to_variant());
+            return;
+        }
+    };
+
+    {
+        let mut rt = runtime.borrow_mut();
+        rt.tts_provider = TtsProvider::Api;
+        rt.tts_preset = preset.id.to_string();
+        rt.tts_api_url = base_url.clone();
+        rt.tts_api_key = api_key.clone();
+        rt.tts_api_model = model.clone();
+        rt.tts_voice = voice.clone();
+        rt.tts_engine = Some(Arc::new(TtsEngine::Api(engine)));
+    }
+
+    if let Ok(d) = db.lock() {
+        let _ = d.set_setting("tts_provider", "api");
+        let _ = d.set_setting("tts_api_preset", preset.id);
+        let _ = d.set_setting("tts_api_url", &base_url);
+        let _ = d.set_setting("tts_api_model", &model);
+        let _ = d.set_setting("tts_voice", &voice);
+        if let Some(key) = &api_key {
+            let _ = d.set_setting("tts_api_key", key);
+        }
+    }
+
+    ui.read_action.set_enabled(true);
+    ui.action
+        .set_state(&format!("api:{}", preset.id).to_variant());
+    show_status(&ui.status, &format!("TTS: {}", preset.label));
+    let st = ui.status.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || hide_status(&st));
+}
+
+fn show_tts_api_key_dialog(
+    parent: &gtk4::ApplicationWindow,
+    runtime: &Rc<RefCell<RuntimeState>>,
+    db: &Arc<Mutex<Db>>,
+    ui: TtsUi,
+    preset: &config::TtsApiPreset,
+) {
+    let previous = tts_state_id(runtime);
+
+    let dialog = gtk4::Window::builder()
+        .title(format!("{} TTS API Key", preset.label))
+        .default_width(380)
+        .default_height(140)
+        .transient_for(parent)
+        .modal(true)
+        .build();
+
+    let grid = gtk4::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(12)
+        .margin_top(16)
+        .margin_bottom(16)
+        .margin_start(16)
+        .margin_end(16)
+        .build();
+
+    let label = gtk4::Label::new(Some(&format!("Enter your {} API key:", preset.label)));
+    label.set_halign(gtk4::Align::Start);
+    grid.attach(&label, 0, 0, 2, 1);
+
+    let key_entry = gtk4::Entry::new();
+    key_entry.set_hexpand(true);
+    key_entry.set_placeholder_text(Some("API key"));
+    key_entry.set_input_purpose(gtk4::InputPurpose::Password);
+    key_entry.set_visibility(false);
+    grid.attach(&key_entry, 0, 1, 2, 1);
+
+    let btn_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    btn_box.set_halign(gtk4::Align::End);
+    let cancel_btn = gtk4::Button::with_label("Cancel");
+    let save_btn = gtk4::Button::with_label("Save");
+    btn_box.append(&cancel_btn);
+    btn_box.append(&save_btn);
+    grid.attach(&btn_box, 0, 2, 2, 1);
+
+    dialog.set_child(Some(&grid));
+
+    let action_cancel = ui.action.clone();
+    let dialog_cancel = dialog.clone();
+    cancel_btn.connect_clicked(move |_| {
+        action_cancel.set_state(&previous.to_variant());
+        dialog_cancel.close();
+    });
+
+    let runtime_save = Rc::clone(runtime);
+    let db_save = Arc::clone(db);
+    let ui_save = ui.clone();
+    let dialog_save = dialog.clone();
+    let preset_id = preset.id;
+    let preset_label = preset.label;
+    let preset_base_url = preset.base_url;
+    let preset_model = preset.default_model;
+    let preset_voice = preset.default_voice;
+    save_btn.connect_clicked(move |_| {
+        let key_text = key_entry.text().to_string();
+        if key_text.trim().is_empty() {
+            return;
+        }
+
+        let static_preset = config::TtsApiPreset {
+            id: preset_id,
+            label: preset_label,
+            base_url: preset_base_url,
+            default_model: preset_model,
+            default_voice: preset_voice,
+            needs_key: true,
+        };
+
+        apply_tts_preset(
+            &runtime_save,
+            &db_save,
+            &ui_save,
+            &static_preset,
+            preset_base_url.to_string(),
+            preset_model.to_string(),
+            preset_voice.to_string(),
+            Some(key_text),
+        );
+
+        dialog_save.close();
+    });
+
+    dialog.present();
+}
+
+/// The current TTS selection as a `tts-mode` action value.
+fn tts_state_id(runtime: &Rc<RefCell<RuntimeState>>) -> String {
+    let rt = runtime.borrow();
+    match rt.tts_provider {
+        TtsProvider::None => "none".to_string(),
+        TtsProvider::Piper => rt.tts_voice.clone(),
+        TtsProvider::Api => format!("api:{}", rt.tts_preset),
+    }
+}
+
+/// Dialog for any [OI]-compatible TTS endpoint (LocalAI, LM Studio, custom).
+fn show_tts_custom_dialog(
+    parent: &gtk4::ApplicationWindow,
+    runtime: &Rc<RefCell<RuntimeState>>,
+    db: &Arc<Mutex<Db>>,
+    ui: TtsUi,
+) {
+    let previous = tts_state_id(runtime);
+
+    let dialog = gtk4::Window::builder()
+        .title("Custom TTS API")
+        .default_width(420)
+        .default_height(260)
+        .transient_for(parent)
+        .modal(true)
+        .build();
+
+    let grid = gtk4::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(12)
+        .margin_top(16)
+        .margin_bottom(16)
+        .margin_start(16)
+        .margin_end(16)
+        .build();
+
+    let url_label = gtk4::Label::new(Some("Base URL"));
+    url_label.set_halign(gtk4::Align::End);
+    let url_entry = gtk4::Entry::new();
+    url_entry.set_hexpand(true);
+    url_entry.set_placeholder_text(Some("https://api.example.com/v1"));
+    grid.attach(&url_label, 0, 0, 1, 1);
+    grid.attach(&url_entry, 1, 0, 2, 1);
+
+    let key_label = gtk4::Label::new(Some("API Key"));
+    key_label.set_halign(gtk4::Align::End);
+    let key_entry = gtk4::Entry::new();
+    key_entry.set_hexpand(true);
+    key_entry.set_placeholder_text(Some("(optional)"));
+    key_entry.set_input_purpose(gtk4::InputPurpose::Password);
+    key_entry.set_visibility(false);
+    grid.attach(&key_label, 0, 1, 1, 1);
+    grid.attach(&key_entry, 1, 1, 2, 1);
+
+    let model_label = gtk4::Label::new(Some("Model"));
+    model_label.set_halign(gtk4::Align::End);
+    let model_entry = gtk4::Entry::new();
+    model_entry.set_hexpand(true);
+    model_entry.set_placeholder_text(Some("gpt-4o-mini-tts"));
+    grid.attach(&model_label, 0, 2, 1, 1);
+    grid.attach(&model_entry, 1, 2, 2, 1);
+
+    let voice_label = gtk4::Label::new(Some("Voice"));
+    voice_label.set_halign(gtk4::Align::End);
+    let voice_entry = gtk4::Entry::new();
+    voice_entry.set_hexpand(true);
+    voice_entry.set_placeholder_text(Some("alloy"));
+    grid.attach(&voice_label, 0, 3, 1, 1);
+    grid.attach(&voice_entry, 1, 3, 2, 1);
+
+    // Pre-populate from the active runtime state
+    {
+        let rt = runtime.borrow();
+        url_entry.set_text(&rt.tts_api_url);
+        if let Some(key) = &rt.tts_api_key {
+            key_entry.set_text(key);
+        }
+        model_entry.set_text(&rt.tts_api_model);
+        voice_entry.set_text(&rt.tts_voice);
+    }
+
+    let btn_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    btn_box.set_halign(gtk4::Align::End);
+    let cancel_btn = gtk4::Button::with_label("Cancel");
+    let save_btn = gtk4::Button::with_label("Save");
+    btn_box.append(&cancel_btn);
+    btn_box.append(&save_btn);
+    grid.attach(&btn_box, 0, 4, 3, 1);
+
+    dialog.set_child(Some(&grid));
+
+    let action_cancel = ui.action.clone();
+    let dialog_cancel = dialog.clone();
+    cancel_btn.connect_clicked(move |_| {
+        action_cancel.set_state(&previous.to_variant());
+        dialog_cancel.close();
+    });
+
+    let runtime_save = Rc::clone(runtime);
+    let db_save = Arc::clone(db);
+    let ui_save = ui.clone();
+    let dialog_save = dialog.clone();
+    save_btn.connect_clicked(move |_| {
+        let url = url_entry.text().trim().to_string();
+        let model = model_entry.text().trim().to_string();
+        let voice = voice_entry.text().trim().to_string();
+        let key_text = key_entry.text().trim().to_string();
+
+        if url.is_empty() || model.is_empty() {
+            return;
+        }
+
+        let api_key = if key_text.is_empty() {
+            None
+        } else {
+            Some(key_text)
+        };
+
+        let custom = match config::find_tts_preset("custom") {
+            Some(preset) => preset,
+            None => return,
+        };
+
+        apply_tts_preset(
+            &runtime_save,
+            &db_save,
+            &ui_save,
+            custom,
+            url,
+            model,
+            voice,
+            api_key,
+        );
+
+        dialog_save.close();
+    });
+
+    dialog.present();
 }
 
 fn delete_all_local_models(models_dir: &std::path::Path) {
@@ -2273,7 +2751,7 @@ fn download_tts_models(
                         let mut rt = runtime_c.borrow_mut();
                         rt.tts_provider = TtsProvider::Piper;
                         rt.tts_voice = vid.clone();
-                        rt.tts_engine = Some(Arc::new(engine));
+                        rt.tts_engine = Some(Arc::new(TtsEngine::Piper(engine)));
                         rt.tts_downloading = false;
                         if let Ok(d) = db_c.lock() {
                             let _ = d.set_setting("tts_provider", "piper");

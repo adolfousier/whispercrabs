@@ -29,7 +29,9 @@ With **local mode** (`PRIMARY_TRANSCRIPTION_SERVICE=local`), everything stays on
 - **STT — Local**: whisper.cpp transcription, no internet required (Tiny, Base, Small, Medium models)
 - **STT — API**: any OpenAI-compatible endpoint (Groq, Ollama, OpenRouter, LM Studio, Custom)
 - **TTS — Local**: optional text-to-speech via Piper, 6 built-in voices (US/UK, male/female)
+- **TTS — API**: any [OI]-compatible `/audio/speech` endpoint ([OI], OpenRouter, or a custom server)
 - One-click switching via right-click menu for both STT and TTS
+- **Custom TTS API dialog** — Base URL, API Key, Model, and Voice for any compatible server
 - **Custom API dialog** — connect to any OpenAI-compatible endpoint with Base URL, API Key, and Model
 - Global keyboard shortcuts via D-Bus (works on GNOME, KDE, Sway, etc.)
 - Transcribed text copied to clipboard automatically
@@ -41,7 +43,7 @@ With **local mode** (`PRIMARY_TRANSCRIPTION_SERVICE=local`), everything stays on
 
 ### Right-Click Menu
 
-Right-click the button to switch STT provider/model or TTS voice:
+Right-click the button to switch STT provider/model, TTS voice, or TTS API provider:
 
 ![Right-click menu](src/screenshots/right-click-menu.png)
 
@@ -228,7 +230,45 @@ WhisperCrabs includes optional text-to-speech powered by [Piper](https://github.
 | Joe | US English | Male |
 | Cori | UK English | Female |
 
-Switch voices from the right-click menu under **TTS Voices**. Use **Reset TTS** to re-download in case of errors, or **Delete TTS** to remove all TTS data.
+Switch voices from the right-click menu under **TTS — Local (Piper)**. Use **Reset TTS** to re-download in case of errors, or **Delete TTS** to remove all TTS data.
+
+#### Text-to-Speech via API
+
+Local Piper stays the default, but you can point TTS at any [OI]-compatible `/audio/speech` endpoint instead. This is the same choice you already have for STT: local by default, hosted or self-hosted when you want it.
+
+Right-click the button and pick a provider under **TTS — API**:
+
+| Provider | Base URL | Default Model | Default Voice | API Key |
+|----------|----------|---------------|---------------|---------|
+| [OI] | `https://api.openai.com/v1` | `gpt-4o-mini-tts` | `alloy` | Required |
+| OpenRouter | `https://openrouter.ai/api/v1` | `mistralai/voxtral-mini-tts-2603` | `en_paul_neutral` | Required |
+| Custom API... | User-configured | User-configured | User-configured | Optional |
+
+**Custom API...** takes a Base URL, API Key, Model, and Voice, so any compatible server works (LocalAI, LM Studio, vLLM with a speech model, and so on). The key is optional there, which is what you want for a local endpoint.
+
+The endpoint must be able to return raw PCM. WhisperCrabs asks for `response_format: "pcm"`, reads `rate` and `channels` from the response `Content-Type`, and mixes multi-channel audio down to mono. MP3-only models are rejected with a clear message because this binary ships no MP3 decoder, so pick a model or provider that supports PCM.
+
+Set the same thing from `.env` if you prefer:
+
+```env
+TTS_PROVIDER=api
+TTS_PRESET=openrouter
+TTS_BASE_URL=https://openrouter.ai/api/v1
+TTS_API_KEY=sk-or-...
+TTS_MODEL=mistralai/voxtral-mini-tts-2603
+TTS_VOICE=en_paul_neutral
+```
+
+| Variable | Meaning |
+|----------|---------|
+| `TTS_PROVIDER` | `none` (default), `piper` for local, or `api` |
+| `TTS_PRESET` | `openai`, `openrouter`, or `custom` |
+| `TTS_BASE_URL` | Base URL; `/audio/speech` is appended |
+| `TTS_API_KEY` | API key (falls back to `OPENAI_API_KEY`) |
+| `TTS_MODEL` | TTS model id |
+| `TTS_VOICE` | Voice id for the selected provider |
+
+Long text is split into chunks under the API input limit and the audio is joined, so reading a whole page of clipboard text still works.
 
 ## D-Bus Control
 
@@ -366,7 +406,7 @@ API_MODEL=whisper-1
 | Audio playback | rodio |
 | Local STT | whisper-rs (whisper.cpp) + rubato |
 | API STT | reqwest + OpenAI-compatible API |
-| TTS | piper-tts (Python, optional) |
+| TTS | piper-tts (Python, optional) or [OI]-compatible `/audio/speech` |
 | Database | rusqlite (bundled SQLite) |
 | Clipboard | arboard |
 | Config | dotenvy |

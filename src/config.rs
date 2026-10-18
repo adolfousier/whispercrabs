@@ -111,7 +111,53 @@ pub fn model_url(file_name: &str) -> String {
 #[derive(Clone, Copy, PartialEq)]
 pub enum TtsProvider {
     None,
+    /// Local synthesis through Piper.
     Piper,
+    /// Remote synthesis through an [OI]-compatible `/audio/speech` endpoint.
+    Api,
+}
+
+/// Built-in [OI]-compatible TTS provider configuration.
+pub struct TtsApiPreset {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub base_url: &'static str,
+    pub default_model: &'static str,
+    pub default_voice: &'static str,
+    pub needs_key: bool,
+}
+
+/// Pre-configured TTS API providers ([OI], OpenRouter, custom endpoint).
+pub const TTS_API_PRESETS: &[TtsApiPreset] = &[
+    TtsApiPreset {
+        id: "openai",
+        label: "[OI]",
+        base_url: "https://api.openai.com/v1",
+        default_model: "gpt-4o-mini-tts",
+        default_voice: "alloy",
+        needs_key: true,
+    },
+    TtsApiPreset {
+        id: "openrouter",
+        label: "OpenRouter",
+        base_url: "https://openrouter.ai/api/v1",
+        default_model: "mistralai/voxtral-mini-tts-2603",
+        default_voice: "en_paul_neutral",
+        needs_key: true,
+    },
+    TtsApiPreset {
+        id: "custom",
+        label: "Custom API...",
+        base_url: "https://api.openai.com/v1",
+        default_model: "gpt-4o-mini-tts",
+        default_voice: "alloy",
+        needs_key: false,
+    },
+];
+
+/// Look up a TTS API preset by its short identifier.
+pub fn find_tts_preset(id: &str) -> Option<&'static TtsApiPreset> {
+    TTS_API_PRESETS.iter().find(|p| p.id == id)
 }
 
 /// A Piper voice preset.
@@ -211,6 +257,14 @@ pub struct Config {
     pub db_path: PathBuf,
     pub models_dir: PathBuf,
     pub sound_notification: bool,
+    /// Default TTS provider: "none", "piper", or "api".
+    pub tts_provider: String,
+    /// TTS API preset id ("openai", "openrouter", "custom").
+    pub tts_api_preset: String,
+    pub tts_api_base_url: String,
+    pub tts_api_key: Option<String>,
+    pub tts_api_model: String,
+    pub tts_voice: String,
 }
 
 impl Config {
@@ -263,6 +317,45 @@ impl Config {
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
 
+        // TTS defaults. Local (Piper) stays the default provider; API TTS is
+        // opt-in through TTS_PROVIDER=api or the right-click menu.
+        let tts_env_provider = std::env::var("TTS_PROVIDER")
+            .unwrap_or_default()
+            .to_lowercase();
+        let tts_provider = match tts_env_provider.as_str() {
+            "local" | "piper" => "piper",
+            "api" | "openai" | "openrouter" => "api",
+            _ => "none",
+        }
+        .to_string();
+
+        let tts_api_preset = std::env::var("TTS_PRESET")
+            .map(|v| v.to_lowercase())
+            .unwrap_or_else(|_| match tts_env_provider.as_str() {
+                "openai" | "openrouter" => tts_env_provider.clone(),
+                _ => "custom".to_string(),
+            });
+        let tts_preset = find_tts_preset(&tts_api_preset)
+            .or_else(|| find_tts_preset("custom"))
+            .unwrap_or(&TTS_API_PRESETS[0]);
+
+        let tts_api_base_url =
+            std::env::var("TTS_BASE_URL").unwrap_or_else(|_| tts_preset.base_url.to_string());
+        let tts_api_model =
+            std::env::var("TTS_MODEL").unwrap_or_else(|_| tts_preset.default_model.to_string());
+        // Voice default follows the provider: Piper speaks with its own voice
+        // ids, API TTS with the preset's voice.
+        let tts_voice = std::env::var("TTS_VOICE").unwrap_or_else(|_| {
+            if tts_provider == "api" {
+                tts_preset.default_voice.to_string()
+            } else {
+                DEFAULT_PIPER_VOICE.to_string()
+            }
+        });
+        let tts_api_key = std::env::var("TTS_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+            .ok();
+
         Self {
             transcription_service,
             api_base_url,
@@ -271,6 +364,12 @@ impl Config {
             db_path,
             models_dir,
             sound_notification,
+            tts_provider,
+            tts_api_preset,
+            tts_api_base_url,
+            tts_api_key,
+            tts_api_model,
+            tts_voice,
         }
     }
 }

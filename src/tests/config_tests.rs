@@ -78,3 +78,66 @@ fn model_url_produces_valid_huggingface_url() {
     assert!(url.starts_with("https://huggingface.co/"));
     assert!(url.ends_with("ggml-tiny.en.bin"));
 }
+
+#[test]
+fn find_tts_preset_returns_known_providers() {
+    let openai = config::find_tts_preset("openai");
+    assert!(openai.is_some());
+    let openai = openai.unwrap();
+    assert!(openai.needs_key);
+    assert!(openai.base_url.starts_with("https://"));
+    assert!(!openai.default_model.is_empty());
+    assert!(!openai.default_voice.is_empty());
+
+    let openrouter = config::find_tts_preset("openrouter");
+    assert!(openrouter.is_some());
+    assert!(openrouter.unwrap().base_url.contains("openrouter.ai"));
+
+    let custom = config::find_tts_preset("custom");
+    assert!(custom.is_some());
+    assert!(!custom.unwrap().needs_key);
+}
+
+#[test]
+fn find_tts_preset_returns_none_for_unknown() {
+    assert!(config::find_tts_preset("nonexistent").is_none());
+}
+
+#[test]
+fn all_tts_api_presets_have_required_fields() {
+    for preset in config::TTS_API_PRESETS {
+        assert!(!preset.id.is_empty(), "preset id must not be empty");
+        assert!(!preset.label.is_empty(), "preset label must not be empty");
+        assert!(
+            preset.base_url.starts_with("http"),
+            "preset {} base_url must start with http",
+            preset.id
+        );
+        assert!(
+            !preset.default_model.is_empty(),
+            "preset {} default_model must not be empty",
+            preset.id
+        );
+        assert!(
+            !preset.default_voice.is_empty(),
+            "preset {} default_voice must not be empty",
+            preset.id
+        );
+    }
+}
+
+#[test]
+fn tts_presets_do_not_collide_with_piper_voice_ids() {
+    for preset in config::TTS_API_PRESETS {
+        assert!(
+            config::find_piper_voice(preset.id).is_none(),
+            "TTS preset id {} collides with a Piper voice id",
+            preset.id
+        );
+    }
+}
+
+#[test]
+fn default_piper_voice_is_valid() {
+    assert!(config::find_piper_voice(config::DEFAULT_PIPER_VOICE).is_some());
+}

@@ -13,6 +13,10 @@ const VALID_SETTING_PREFIXES: &[&str] = &[
     "api_key_",
     "tts_provider",
     "tts_voice",
+    "tts_api_preset",
+    "tts_api_url",
+    "tts_api_key",
+    "tts_api_model",
 ];
 
 /// SQLite database for transcription history and settings.

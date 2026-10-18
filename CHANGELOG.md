@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **TTS via API** — text-to-speech now matches STT: local Piper stays the default, and any [OI]-compatible `/audio/speech` endpoint can be selected instead:
+  - Built-in presets for **[OI]** and **OpenRouter**, plus a **Custom API...** dialog taking Base URL, API Key, Model, and Voice for LocalAI, LM Studio, or any compatible server
+  - New right-click sections: **TTS — Local (Piper)** and **TTS — API**
+  - Environment defaults: `TTS_PROVIDER`, `TTS_PRESET`, `TTS_BASE_URL`, `TTS_API_KEY`, `TTS_MODEL`, `TTS_VOICE`
+  - Requests raw PCM and reads `rate`/`channels` from the response `Content-Type`; WAV responses are accepted, multi-channel audio is mixed to mono, MP3-only models are rejected with a clear message
+  - Long text is chunked under the API input limit and the audio is joined, so reading a whole page still works
+- **TTS tests** — endpoint building, URL validation, PCM/WAV decoding, MP3 rejection, and chunking
 - **Application icon** — WhisperCrabs no longer shows the generic executable placeholder:
   - **macOS** ships `WhisperCrabs.app` in the release tarball (`scripts/bundle-macos.sh`), which is where macOS reads the icon from, and the binary also sets the Dock icon from an embedded `.icns` at startup so a loose binary is branded while it runs
   - **Windows** embeds the `.ico` as a resource in `whispercrabs.exe` via `build.rs`
