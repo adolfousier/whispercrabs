@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.1.24 — 2026-10-18
 
-- **TTS via API** — text-to-speech now matches STT: local Piper stays the default, and any [OI]-compatible `/audio/speech` endpoint can be selected instead:
-  - Built-in presets for **[OI]** and **OpenRouter**, plus a **Custom API...** dialog taking Base URL, API Key, Model, and Voice for LocalAI, LM Studio, or any compatible server
+- **TTS via API** — text-to-speech now matches STT: local Piper stays the default, and any OpenAI-compatible `/audio/speech` endpoint can be selected instead:
+  - Built-in presets for **OpenAI** and **OpenRouter**, plus a **Custom API...** dialog taking Base URL, API Key, Model, and Voice for LocalAI, LM Studio, or any compatible server
   - New right-click sections: **TTS — Local (Piper)** and **TTS — API**
   - Environment defaults: `TTS_PROVIDER`, `TTS_PRESET`, `TTS_BASE_URL`, `TTS_API_KEY`, `TTS_MODEL`, `TTS_VOICE`
   - Requests raw PCM and reads `rate`/`channels` from the response `Content-Type`; WAV responses are accepted, multi-channel audio is mixed to mono, MP3-only models are rejected with a clear message
@@ -14,6 +14,7 @@
   - **Windows** embeds the `.ico` as a resource in `whispercrabs.exe` via `build.rs`
   - **Linux** sets the themed icon by app id, and the release tarball ships a `.desktop` entry plus hicolor PNGs (`just install-desktop` installs them from a checkout)
 - **Icon tests** — guards the app id, desktop entry, and icon assets so the OS lookup cannot silently break again
+- **README** — refreshed right-click menu screenshot and documented the new install paths for macOS and Linux
 
 ## v0.1.23 — 2026-03-09
 
