@@ -72,3 +72,25 @@ list-models:
     @echo "  ggml-large-v3.bin    (~3.1GB, best accuracy, multilingual)"
     @echo ""
     @echo "Example: just run-local ggml-small.en.bin"
+
+# Wrap the release binary in a macOS .app bundle (needed for the Finder icon)
+bundle-macos: build
+    ./scripts/bundle-macos.sh
+
+# Install the Linux desktop entry and themed icons for the current user,
+# so window lists, docks, and app launchers show the WhisperCrabs icon
+install-desktop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    icon_dir="$HOME/.local/share/icons/hicolor"
+    for size in 128 256; do
+        install -Dm644 "assets/icon-${size}.png" \
+            "$icon_dir/${size}x${size}/apps/dev.whispercrabs.app.png"
+    done
+    install -Dm644 assets/dev.whispercrabs.app.desktop \
+        "$HOME/.local/share/applications/dev.whispercrabs.app.desktop"
+    command -v update-desktop-database >/dev/null 2>&1 && \
+        update-desktop-database "$HOME/.local/share/applications" || true
+    command -v gtk4-update-icon-cache >/dev/null 2>&1 && \
+        gtk4-update-icon-cache -f -t "$icon_dir" || true
+    echo "Installed desktop entry and icons."

@@ -67,7 +67,7 @@ fn wav_clamps_out_of_range_samples() {
 #[test]
 fn mono_downmix_averages_channels() {
     // Simulate stereo: L=1.0, R=-1.0 should average to 0.0
-    let stereo = vec![1.0f32, -1.0, 0.5, 0.5, -0.5, 0.3];
+    let stereo = [1.0f32, -1.0, 0.5, 0.5, -0.5, 0.3];
     let channels: u16 = 2;
 
     let mono: Vec<f32> = stereo

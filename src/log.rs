@@ -28,11 +28,18 @@ pub fn init(debug: bool) {
     }
 }
 
+/// Whether `--debug` enabled logging. Use it to skip work whose only
+/// purpose is producing a log line.
+pub fn is_enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
+
 /// Write a debug log line (with timestamp). No-op if `--debug` was not passed.
 pub fn debug(msg: &str) {
     if !ENABLED.load(Ordering::Relaxed) {
         return;
     }
+
     if let Ok(mut guard) = LOG_FILE.lock() {
         if let Some(ref mut f) = *guard {
             let now = chrono::Local::now().format("%H:%M:%S%.3f");

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=WhisperCrabs
+GenericName=Voice to Text
+Comment=Local-first voice-to-text and text-to-speech
+Exec=whispercrabs
+Icon=dev.whispercrabs.app
+Terminal=false
+Categories=AudioVideo;Audio;Utility;
+Keywords=speech;voice;transcription;stt;tts;whisper;
+StartupNotify=false
+StartupWMClass=whispercrabs

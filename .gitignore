@@ -1,4 +1,6 @@
 /target
+# Build output copied to the repo root by the bundle scripts
+/whispercrabs
 .env
 *.deb
 .cargo/
@@ -7,3 +9,6 @@ tasks/
 .env*
 !.env.example
 
+
+# macOS Finder metadata
+.DS_Store

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Application icon** — WhisperCrabs no longer shows the generic executable placeholder:
+  - **macOS** ships `WhisperCrabs.app` in the release tarball (`scripts/bundle-macos.sh`), which is where macOS reads the icon from, and the binary also sets the Dock icon from an embedded `.icns` at startup so a loose binary is branded while it runs
+  - **Windows** embeds the `.ico` as a resource in `whispercrabs.exe` via `build.rs`
+  - **Linux** sets the themed icon by app id, and the release tarball ships a `.desktop` entry plus hicolor PNGs (`just install-desktop` installs them from a checkout)
+- **Icon tests** — guards the app id, desktop entry, and icon assets so the OS lookup cannot silently break again
+
 ## v0.1.23 — 2026-03-09
 
 - **Auto-cleanup old voice models** — switching TTS voices deletes the previous voice files (~63 MB) to free disk space

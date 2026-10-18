@@ -138,12 +138,31 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       # ── Package ────────────────────────────────────────────
-      - name: Package (Linux / macOS)
-        if: runner.os != 'Windows'
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          mkdir staging
+          mkdir -p staging
           cp "target/${{ matrix.target }}/release/whispercrabs" staging/
+          # Desktop entry and themed icons so the app shows its icon in
+          # window lists and launchers (see `just install-desktop`).
+          cp assets/dev.whispercrabs.app.desktop staging/
+          for size in 128 256; do
+            mkdir -p "staging/icons/hicolor/${size}x${size}/apps"
+            cp "assets/icon-${size}.png" \
+              "staging/icons/hicolor/${size}x${size}/apps/dev.whispercrabs.app.png"
+          done
+          tar -czf "${{ matrix.artifact }}.tar.gz" -C staging .
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # macOS only reads an app icon from a bundle, so ship the .app and
+          # the bare binary side by side.
+          scripts/bundle-macos.sh "target/${{ matrix.target }}/release/whispercrabs" staging
+          mkdir -p staging/bin
+          cp "target/${{ matrix.target }}/release/whispercrabs" staging/bin/
           tar -czf "${{ matrix.artifact }}.tar.gz" -C staging .
 
       - name: Package (Windows)

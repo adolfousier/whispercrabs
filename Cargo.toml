@@ -30,6 +30,25 @@ rubato = "0.14"
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 arboard = "3"
 
+# macOS: set the Dock icon at runtime when running outside an .app bundle.
+# These crates are already in the tree via arboard, so this adds no new
+# transitive dependencies.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSImage",
+    "NSResponder",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSData",
+] }
+
+# Windows: embed the icon resource into the executable at link time.
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -71,9 +71,10 @@ chmod +x whispercrabs
 ```bash
 gh release download --repo adolfousier/whispercrabs --pattern 'whispercrabs-*-macos-aarch64.tar.gz'
 tar xzf whispercrabs-*-macos-aarch64.tar.gz
-chmod +x whispercrabs
-./whispercrabs
+open WhisperCrabs.app          # or: ./bin/whispercrabs
 ```
+
+macOS reads an app icon from the `.app` bundle, so launch the bundle to get the crab in the Dock and in Finder. The loose binary in `bin/` works the same but only brands its Dock tile while running. If Gatekeeper blocks the first launch, right-click the app and choose **Open**.
 
 **Windows (x86_64):**
 ```powershell
@@ -81,6 +82,20 @@ gh release download --repo adolfousier/whispercrabs --pattern 'whispercrabs-*-wi
 Expand-Archive whispercrabs-*-windows-x86_64.zip -DestinationPath .
 .\whispercrabs.exe
 ```
+
+**Desktop icon (Linux):** the release tarball ships a desktop entry and themed icons. Install them for the current user with:
+
+```bash
+mkdir -p ~/.local/share/applications
+cp dev.whispercrabs.app.desktop ~/.local/share/applications/
+for size in 128 256; do
+  mkdir -p ~/.local/share/icons/hicolor/${size}x${size}/apps
+  cp icons/hicolor/${size}x${size}/apps/dev.whispercrabs.app.png \
+     ~/.local/share/icons/hicolor/${size}x${size}/apps/
+done
+```
+
+From a source checkout, `just install-desktop` does the same.
 
 **For local mode**: right-click the button and select a local model size (Tiny, Base, Small, Medium) — downloads automatically.
 

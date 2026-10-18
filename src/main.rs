@@ -21,6 +21,7 @@
 #[macro_use]
 mod log;
 mod api;
+mod app_icon;
 mod audio;
 mod config;
 mod db;
@@ -42,8 +43,13 @@ fn main() {
     let config = Arc::new(config::Config::load());
 
     let app = gtk4::Application::builder()
-        .application_id("dev.whispercrabs.app")
+        .application_id(app_icon::APP_ID)
         .build();
+
+    // The OS-level icon is not something GTK can set portably: macOS needs
+    // the Dock icon applied through NSApplication, Linux resolves it from
+    // the desktop icon theme. Run once GTK is up, before the window shows.
+    app.connect_startup(|_| app_icon::install());
 
     let config_c = Arc::clone(&config);
     app.connect_activate(move |app| {
